@@ -26,6 +26,7 @@ COSTS = os.path.join(DATA, "costs.csv")
 REMINDERS = os.path.join(DATA, "reminders.csv")
 ODOMETER = os.path.join(DATA, "odometer.csv")
 QUOTES = os.path.join(DATA, "insurance_quotes.csv")
+PRICES = os.path.join(DATA, "fuel_prices.csv")
 
 CURRENCY = "$"
 
@@ -41,6 +42,8 @@ FIELDS = {
              "sum_insured", "annual_premium", "monthly_premium", "basic_excess",
              "extra_excess", "windscreen_excess", "choice_of_repairer", "hire_car",
              "roadside", "rating_one_protection", "notes"],
+    PRICES: ["date", "station", "suburb", "brand", "fuel_type", "price_cents",
+             "source", "notes"],
 }
 
 # Cost categories that are also captured in their own ledger, so the
@@ -156,6 +159,28 @@ def cmd_cost(args):
     print(f"Logged cost: {args.category} {money(args.amount)} on {args.date}")
 
 
+def to_cents(value):
+    """Accept 179.9 or 1.799 and normalise to cents per litre."""
+    v = num(value)
+    if v is None:
+        return None
+    return round(v * 100, 1) if v < 20 else round(v, 1)
+
+
+def cmd_price(args):
+    cents = to_cents(args.price)
+    append(PRICES, {
+        "date": args.date, "station": args.station, "suburb": args.suburb or "",
+        "brand": args.brand or "", "fuel_type": args.fuel_type or "91",
+        "price_cents": cents, "source": args.source or "observed",
+        "notes": args.notes or "",
+    })
+    sort_by_date(PRICES)
+    day = parse_date(args.date)
+    when = day.strftime("%a") if day else args.date
+    print(f"Price recorded: {args.station} {cents:.1f}c/L on {args.date} ({when})")
+
+
 def cmd_quote(args):
     append(QUOTES, {
         "brand": args.brand, "underwriter": args.underwriter or "",
@@ -253,6 +278,127 @@ def due_items(reminders, latest_odo, as_of, horizon_days=60, horizon_km=1500):
 
 def line(char="-", width=62):
     return char * width
+
+
+DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+
+def price_observations(fuel_type=None):
+    """Every price point we have: standalone observations plus actual fill-ups."""
+    points = []
+    for row in read(PRICES):
+        day = parse_date(row.get("date"))
+        cents = to_cents(row.get("price_cents"))
+        if day and cents:
+            points.append({"date": day, "cents": cents, "station": row.get("station", ""),
+                           "suburb": row.get("suburb", ""), "type": row.get("fuel_type", ""),
+                           "source": "observed"})
+    for row in read(FUEL):
+        day = parse_date(row.get("date"))
+        cents = to_cents(row.get("price_per_litre"))
+        if day and cents:
+            points.append({"date": day, "cents": cents, "station": row.get("station", ""),
+                           "suburb": "", "type": row.get("fuel_type", ""), "source": "fill-up"})
+    if fuel_type:
+        points = [p for p in points if str(p["type"]).strip() == str(fuel_type)]
+    points.sort(key=lambda p: p["date"])
+    return points
+
+
+def mean(values):
+    return sum(values) / len(values) if values else None
+
+
+def cmd_cycle(args):
+    points = price_observations(args.fuel_type)
+    if not points:
+        print("No prices recorded yet.\n\n"
+              "  ./car.py price --station \"Coles Express Aspley\" --price 179.9\n\n"
+              "Log a price whenever you drive past one. Ten or so readings and this\n"
+              "starts telling you something; a month of them tells you a lot.")
+        return
+
+    print()
+    print(line("=", 70))
+    print(f"  FUEL PRICES — {len(points)} readings, "
+          f"{points[0]['date']} to {points[-1]['date']}")
+    print(line("=", 70))
+
+    # By weekday — the Monday-versus-Thursday question.
+    by_day = {d: [] for d in DAYS}
+    for p in points:
+        by_day[DAYS[p["date"].weekday()]].append(p["cents"])
+    print()
+    print("  BY DAY OF WEEK")
+    print(line("-", 70))
+    averages = {d: mean(v) for d, v in by_day.items() if v}
+    if averages:
+        lo, hi = min(averages.values()), max(averages.values())
+        for day in DAYS:
+            vals = by_day[day]
+            if not vals:
+                print(f"  {day}    {'no readings':>28}")
+                continue
+            avg = mean(vals)
+            span = (hi - lo) or 1
+            bar = "#" * int(round((avg - lo) / span * 34)) or "|"
+            flag = "  <- cheapest" if avg == lo else ("  <- dearest" if avg == hi else "")
+            print(f"  {day}  {avg:6.1f}c  n={len(vals):<3} {bar}{flag}")
+        print()
+        print(f"  Spread between best and worst day: {hi - lo:.1f}c/L")
+        tank = args.tank
+        print(f"  On a {tank:.0f} L fill that is {money((hi - lo) * tank / 100)} a tank.")
+        thin = [d for d, v in by_day.items() if 0 < len(v) < 3]
+        if thin or len(points) < 14:
+            print()
+            print("  Careful: this is a small sample. Day-of-week differences need a few")
+            print("  weeks of readings before they mean anything — a price cycle moving")
+            print("  underneath will otherwise look like a weekday effect.")
+
+    # The cycle itself matters more than the weekday.
+    print()
+    print("  RECENT TREND")
+    print(line("-", 70))
+    recent = points[-args.recent:]
+    lo_p = min(recent, key=lambda p: p["cents"])
+    hi_p = max(recent, key=lambda p: p["cents"])
+    for p in recent[-12:]:
+        mark = " lowest" if p is lo_p else (" highest" if p is hi_p else "")
+        label = (p["station"] or p["suburb"] or p["source"])[:24]
+        print(f"  {p['date']}  {DAYS[p['date'].weekday()]}  {p['cents']:6.1f}c  "
+              f"{label:<24}{mark}")
+    print()
+    print(f"  Range over last {len(recent)} readings: {lo_p['cents']:.1f}c "
+          f"({lo_p['date']}) to {hi_p['cents']:.1f}c ({hi_p['date']}) "
+          f"— {hi_p['cents'] - lo_p['cents']:.1f}c")
+    latest = points[-1]
+    position = (latest["cents"] - lo_p["cents"]) / ((hi_p["cents"] - lo_p["cents"]) or 1)
+    verdict = ("near the bottom — fill now" if position < 0.25 else
+               "near the top — buy only what you need" if position > 0.75 else
+               "mid-cycle")
+    print(f"  Latest reading {latest['cents']:.1f}c sits {position*100:.0f}% up that "
+          f"range: {verdict}.")
+
+    # Which station is actually cheapest.
+    by_station = {}
+    for p in points:
+        if p["station"]:
+            by_station.setdefault(p["station"], []).append(p["cents"])
+    if len(by_station) > 1:
+        print()
+        print("  BY STATION")
+        print(line("-", 70))
+        ranked = sorted(((s, mean(v), len(v)) for s, v in by_station.items()),
+                        key=lambda r: r[1])
+        for station, avg, n in ranked:
+            print(f"  {station[:38]:<38} {avg:6.1f}c   n={n}")
+        best, worst = ranked[0], ranked[-1]
+        gap = worst[1] - best[1]
+        print()
+        print(f"  {best[0]} averages {gap:.1f}c less than {worst[0]}"
+              f" — {money(gap * args.tank / 100)} a tank.")
+        print("  Only meaningful if you priced them on the same days.")
+    print()
 
 
 def cmd_compare(args):
@@ -459,7 +605,7 @@ def cmd_due(args):
 def cmd_log(args):
     """Show the raw ledger for one module."""
     path = {"fuel": FUEL, "service": SERVICE, "cost": COSTS,
-            "reminders": REMINDERS, "odo": ODOMETER, "quotes": QUOTES}[args.module]
+            "reminders": REMINDERS, "odo": ODOMETER, "quotes": QUOTES, "prices": PRICES}[args.module]
     rows = read(path)
     if not rows:
         print(f"No {args.module} records yet.")
@@ -518,6 +664,23 @@ def build_parser():
     r.add_argument("--notes")
     r.set_defaults(func=cmd_remind)
 
+    pr = sub.add_parser("price", help="record a fuel price you saw")
+    pr.add_argument("--station", required=True)
+    pr.add_argument("--price", type=float, required=True, help="cents/L or $/L")
+    pr.add_argument("--date", default=today())
+    pr.add_argument("--suburb")
+    pr.add_argument("--brand")
+    pr.add_argument("--fuel-type", dest="fuel_type", default="91")
+    pr.add_argument("--source", help="observed, app, sign")
+    pr.add_argument("--notes")
+    pr.set_defaults(func=cmd_price)
+
+    cy = sub.add_parser("cycle", help="price by day of week, trend, and by station")
+    cy.add_argument("--fuel-type", dest="fuel_type", help="filter to one grade")
+    cy.add_argument("--recent", type=int, default=30, help="readings in the trend window")
+    cy.add_argument("--tank", type=float, default=40.0, help="litres per fill")
+    cy.set_defaults(func=cmd_cycle)
+
     q = sub.add_parser("quote", help="record an insurance quote")
     q.add_argument("--brand", required=True)
     q.add_argument("--underwriter", help="who actually carries the risk")
@@ -556,7 +719,7 @@ def build_parser():
     d.set_defaults(func=cmd_due)
 
     l = sub.add_parser("log", help="print raw records")
-    l.add_argument("module", choices=["fuel", "service", "cost", "reminders", "odo", "quotes"])
+    l.add_argument("module", choices=["fuel", "service", "cost", "reminders", "odo", "quotes", "prices"])
     l.add_argument("--limit", type=int, default=20)
     l.set_defaults(func=cmd_log)
 
