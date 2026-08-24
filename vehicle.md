@@ -8,16 +8,16 @@
 | Field | Value |
 |---|---|
 | Nickname | — |
-| Make | — |
-| Model | — |
-| Variant / trim | — |
+| Make | Honda |
+| Model | HR-V |
+| Variant / trim | VTi |
 | Model year | — |
 | Build date | — |
-| Body / doors | — |
-| Colour | — |
+| Body / doors | Wagon |
+| Colour | Silver |
 | VIN | — |
 | Engine number | — |
-| Registration (plate) | — |
+| Registration (plate) | 197ZLG |
 | State / territory | — |
 
 ## Drivetrain
@@ -98,4 +98,5 @@
 
 ## Notes
 
-—
+Still to confirm: model year/build date, VIN, state of registration,
+engine and transmission, odometer, tyre size, and service history to date.
