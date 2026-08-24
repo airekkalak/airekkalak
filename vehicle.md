@@ -15,10 +15,10 @@
 | Build date | — |
 | Body / doors | Wagon (5-door) |
 | Colour | Silver |
-| VIN | — |
+| VIN | MRHRU5830LP060490 |
 | Engine number | — |
 | Registration (plate) | 197ZLG |
-| State / territory | — |
+| State / territory | Queensland |
 
 ## Drivetrain
 
@@ -92,7 +92,9 @@
 | Agreed / market value | — |
 | Premium | — |
 | Policy renewal | — |
-| Registration expiry | — |
+| Registration expiry | 2026-12-22 |
+| Registration status | CURRENT (checked 2026-08-24) |
+| Purpose of use | DEALER — see notes |
 | CTP insurer | — |
 | Roadside assist expiry | — |
 
@@ -100,5 +102,18 @@
 
 Odometer 190,000 km as at 2026-08-24 (see `data/odometer.csv`).
 
-Still to confirm: build date, VIN, state of registration, engine and
-transmission, tyre size from the placard, and service history to date.
+Registration details confirmed 2026-08-24 from a Queensland rego check.
+
+**Purpose of use is recorded as DEALER.** If the car is privately owned and
+driven, this is likely to need changing to a private purpose of use — it
+affects the CTP class, the registration fee, and potentially whether an
+insurance claim is honoured. Worth checking with TMR.
+
+**VIN year code.** The 10th character of the VIN is `L`, which under the
+usual convention indicates a 2020 model year, while the registration record
+describes it as a 2019 HR-V. A build-date versus model-year difference is
+common and usually harmless, but confirm against the compliance plate before
+ordering year-specific parts.
+
+Still to confirm: build date, engine and transmission, tyre size from the
+placard, and service history to date.
