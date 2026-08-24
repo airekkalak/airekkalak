@@ -87,6 +87,28 @@ excess — because that is the number that decides whether a cheap policy was
 actually cheap. It also flags the monthly surcharge and any two brands you
 quoted that share an underwriter.
 
+## The decision rule
+
+Decided in advance, so a persuasive quote page doesn't decide it for you.
+
+1. **Comprehensive, agreed value.** At 2019 and 190,000 km, market value is
+   the insurer's number on the day, and on a high-km car it is soft and only
+   falls. Agreed value settles it up front.
+2. **Pay annually.** Monthly is a payment plan with a surcharge.
+3. **Include choice of repairer.** Otherwise the insurer picks the shop and
+   the parts. This is the one inclusion worth paying a difference for.
+4. **Excess: raise it only if it clears break-even.** Raising the excess by
+   `E` and saving `P` per year is worth it only when `P > E / 10` — roughly
+   one at-fault claim per decade. A $500 higher excess must save more than
+   $50 a year. Most quotes fail this.
+5. **Tie-break.** Under about $150 a year between two quotes, take the one
+   with agreed value, choice of repairer and rating-one protection. Over
+   $150, take the cheaper one.
+
+Expect the direct brands to win on price while dropping choice of repairer,
+and the full-service brands to cost more and include it. Which side wins
+depends on your actual numbers.
+
 ## Before you sign
 
 - Read the PDS section on total loss and on excesses — not the marketing page.
