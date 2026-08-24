@@ -1,0 +1,409 @@
+#!/usr/bin/env python3
+"""Everything Car — record and manage fuel, servicing, costs and reminders.
+
+Records live in data/*.csv so they stay readable and diffable in git.
+
+    ./car.py fuel    --date 2026-08-24 --odo 84120 --litres 46.2 --cost 82.15
+    ./car.py service --date 2026-08-24 --odo 84120 --type "Minor service" --cost 320
+    ./car.py cost    --date 2026-08-24 --category rego --amount 890
+    ./car.py remind  --item "Registration" --due-date 2027-03-31
+    ./car.py report
+    ./car.py due
+"""
+
+import argparse
+import csv
+import datetime as dt
+import os
+import sys
+
+ROOT = os.path.dirname(os.path.abspath(__file__))
+DATA = os.path.join(ROOT, "data")
+
+FUEL = os.path.join(DATA, "fuel.csv")
+SERVICE = os.path.join(DATA, "service.csv")
+COSTS = os.path.join(DATA, "costs.csv")
+REMINDERS = os.path.join(DATA, "reminders.csv")
+
+CURRENCY = "$"
+
+FIELDS = {
+    FUEL: ["date", "odometer_km", "litres", "total_cost", "price_per_litre",
+           "station", "fuel_type", "full_tank", "notes"],
+    SERVICE: ["date", "odometer_km", "type", "description", "workshop", "cost",
+              "parts", "next_due_date", "next_due_km", "notes"],
+    COSTS: ["date", "category", "description", "amount", "odometer_km", "notes"],
+    REMINDERS: ["item", "due_date", "due_km", "recurrence", "notes"],
+}
+
+# Cost categories that are also captured in their own ledger, so the
+# report does not count them twice.
+LEDGER_CATEGORIES = {"fuel", "service"}
+
+
+# ---------------------------------------------------------------- storage
+
+def read(path):
+    if not os.path.exists(path):
+        return []
+    with open(path, newline="") as fh:
+        return [row for row in csv.DictReader(fh) if any(v.strip() for v in row.values() if v)]
+
+
+def append(path, row):
+    exists = os.path.exists(path)
+    with open(path, "a", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=FIELDS[path])
+        if not exists or os.path.getsize(path) == 0:
+            writer.writeheader()
+        writer.writerow({k: row.get(k, "") for k in FIELDS[path]})
+
+
+def rewrite(path, rows):
+    with open(path, "w", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=FIELDS[path])
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({k: row.get(k, "") for k in FIELDS[path]})
+
+
+def sort_by_date(path):
+    rows = read(path)
+    rows.sort(key=lambda r: (r.get("date") or "9999-99-99", num(r.get("odometer_km")) or 0))
+    rewrite(path, rows)
+
+
+# ---------------------------------------------------------------- helpers
+
+def num(value):
+    try:
+        return float(str(value).replace(",", "").replace("$", "").strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def today():
+    return dt.date.today().isoformat()
+
+
+def parse_date(value):
+    try:
+        return dt.date.fromisoformat((value or "").strip())
+    except ValueError:
+        return None
+
+
+def money(value):
+    return f"{CURRENCY}{value:,.2f}"
+
+
+def truthy(value):
+    return str(value).strip().lower() in {"y", "yes", "true", "1"}
+
+
+# ---------------------------------------------------------------- commands
+
+def cmd_fuel(args):
+    litres, cost = args.litres, args.cost
+    ppl = args.price
+    if ppl and litres and not cost:
+        cost = round(ppl / 100 * litres, 2) if ppl > 20 else round(ppl * litres, 2)
+    if litres and cost and not ppl:
+        ppl = round(cost / litres, 3)
+    append(FUEL, {
+        "date": args.date, "odometer_km": args.odo, "litres": litres,
+        "total_cost": cost, "price_per_litre": ppl, "station": args.station or "",
+        "fuel_type": args.fuel_type or "", "full_tank": "no" if args.partial else "yes",
+        "notes": args.notes or "",
+    })
+    sort_by_date(FUEL)
+    print(f"Logged fill-up: {args.date}  {litres} L  {money(cost)} @ {args.odo} km")
+
+
+def cmd_service(args):
+    append(SERVICE, {
+        "date": args.date, "odometer_km": args.odo, "type": args.type,
+        "description": args.description or "", "workshop": args.workshop or "",
+        "cost": args.cost, "parts": args.parts or "",
+        "next_due_date": args.next_due_date or "", "next_due_km": args.next_due_km or "",
+        "notes": args.notes or "",
+    })
+    sort_by_date(SERVICE)
+    print(f"Logged service: {args.type} on {args.date} @ {args.odo} km")
+    if args.next_due_date or args.next_due_km:
+        append(REMINDERS, {
+            "item": f"Next service (after {args.type})",
+            "due_date": args.next_due_date or "", "due_km": args.next_due_km or "",
+            "recurrence": "", "notes": f"set from service on {args.date}",
+        })
+        print("  → reminder added for the next service")
+
+
+def cmd_cost(args):
+    append(COSTS, {
+        "date": args.date, "category": args.category,
+        "description": args.description or "", "amount": args.amount,
+        "odometer_km": args.odo or "", "notes": args.notes or "",
+    })
+    sort_by_date(COSTS)
+    print(f"Logged cost: {args.category} {money(args.amount)} on {args.date}")
+
+
+def cmd_remind(args):
+    append(REMINDERS, {
+        "item": args.item, "due_date": args.due_date or "", "due_km": args.due_km or "",
+        "recurrence": args.recurrence or "", "notes": args.notes or "",
+    })
+    print(f"Reminder added: {args.item}")
+
+
+# ---------------------------------------------------------------- analysis
+
+def fuel_stats(rows):
+    """Full-to-full economy. Litres between two full tanks / distance covered."""
+    rows = [r for r in rows if num(r.get("odometer_km")) and num(r.get("litres"))]
+    rows.sort(key=lambda r: num(r["odometer_km"]))
+    legs, pending, last_full = [], 0.0, None
+    for row in rows:
+        pending += num(row["litres"])
+        if truthy(row.get("full_tank")):
+            odo = num(row["odometer_km"])
+            if last_full is not None and odo > last_full:
+                legs.append({"distance": odo - last_full, "litres": pending,
+                             "date": row.get("date", ""), "odometer": odo})
+            last_full = odo
+            pending = 0.0
+    return legs
+
+
+def summarise(as_of=None):
+    fuel, service = read(FUEL), read(SERVICE)
+    costs, reminders = read(COSTS), read(REMINDERS)
+    odos = [num(r.get("odometer_km")) for r in fuel + service + costs]
+    odos = [o for o in odos if o]
+    latest_odo = max(odos) if odos else None
+    span_km = (max(odos) - min(odos)) if len(odos) > 1 else 0
+
+    fuel_spend = sum(num(r.get("total_cost")) or 0 for r in fuel)
+    litres = sum(num(r.get("litres")) or 0 for r in fuel)
+    service_spend = sum(num(r.get("cost")) or 0 for r in service)
+    other = [r for r in costs if (r.get("category") or "").strip().lower() not in LEDGER_CATEGORIES]
+    other_spend = sum(num(r.get("amount")) or 0 for r in other)
+
+    legs = fuel_stats(fuel)
+    tracked_km = sum(l["distance"] for l in legs)
+    tracked_l = sum(l["litres"] for l in legs)
+
+    return {
+        "fuel": fuel, "service": service, "costs": costs, "reminders": reminders,
+        "latest_odo": latest_odo, "span_km": span_km,
+        "fuel_spend": fuel_spend, "litres": litres,
+        "service_spend": service_spend, "other": other, "other_spend": other_spend,
+        "total": fuel_spend + service_spend + other_spend,
+        "legs": legs, "tracked_km": tracked_km, "tracked_l": tracked_l,
+        "as_of": as_of or dt.date.today(),
+    }
+
+
+def due_items(reminders, latest_odo, as_of, horizon_days=60, horizon_km=1500):
+    out = []
+    for row in reminders:
+        due_date, due_km = parse_date(row.get("due_date")), num(row.get("due_km"))
+        days = (due_date - as_of).days if due_date else None
+        km = (due_km - latest_odo) if (due_km and latest_odo) else None
+        flagged = (days is not None and days <= horizon_days) or (km is not None and km <= horizon_km)
+        if flagged:
+            out.append({"item": row.get("item", ""), "days": days, "km": km,
+                        "due_date": row.get("due_date", ""), "due_km": row.get("due_km", ""),
+                        "notes": row.get("notes", "")})
+    out.sort(key=lambda r: (r["days"] if r["days"] is not None else 10**6,
+                            r["km"] if r["km"] is not None else 10**6))
+    return out
+
+
+def line(char="-", width=62):
+    return char * width
+
+
+def cmd_report(args):
+    s = summarise()
+    print()
+    print(line("="))
+    print("  EVERYTHING CAR — summary")
+    print(line("="))
+
+    if s["latest_odo"]:
+        print(f"  Latest odometer   {s['latest_odo']:,.0f} km")
+    print(f"  Records           {len(s['fuel'])} fill-ups · {len(s['service'])} services · "
+          f"{len(s['costs'])} other costs")
+
+    print()
+    print("  FUEL & ECONOMY")
+    print(line())
+    if s["fuel"]:
+        prices = [num(r.get("price_per_litre")) for r in s["fuel"]]
+        prices = [p for p in prices if p]
+        print(f"  Fill-ups          {len(s['fuel'])}   ·   {s['litres']:,.1f} L   ·   {money(s['fuel_spend'])}")
+        if prices:
+            print(f"  Price per litre   avg {CURRENCY}{sum(prices)/len(prices):.3f}   "
+                  f"(low {CURRENCY}{min(prices):.3f} / high {CURRENCY}{max(prices):.3f})")
+        if s["legs"]:
+            l100 = s["tracked_l"] / s["tracked_km"] * 100
+            print(f"  Economy           {l100:.2f} L/100km   ·   {235.215/l100:.1f} mpg (US)   "
+                  f"·   {282.481/l100:.1f} mpg (imp)")
+            print(f"  Measured over     {s['tracked_km']:,.0f} km across {len(s['legs'])} full-to-full tanks")
+            cost_km = s["fuel_spend"] / s["tracked_km"]
+            print(f"  Fuel cost         {CURRENCY}{cost_km:.3f}/km   ·   {money(cost_km*100)} per 100 km")
+            best = min(s["legs"], key=lambda l: l["litres"] / l["distance"])
+            worst = max(s["legs"], key=lambda l: l["litres"] / l["distance"])
+            print(f"  Best tank         {best['litres']/best['distance']*100:.2f} L/100km ({best['date']})")
+            print(f"  Worst tank        {worst['litres']/worst['distance']*100:.2f} L/100km ({worst['date']})")
+        else:
+            print("  Economy           needs two full-tank fill-ups with odometer readings")
+    else:
+        print("  No fill-ups logged yet.")
+
+    print()
+    print("  SERVICE & MAINTENANCE")
+    print(line())
+    if s["service"]:
+        for row in s["service"][-6:]:
+            cost = num(row.get("cost"))
+            odo = num(row.get("odometer_km"))
+            print(f"  {row.get('date',''):<12} {(row.get('type') or '')[:26]:<26} "
+                  f"{(f'{odo:,.0f} km' if odo else ''):>11}  {money(cost) if cost else '':>10}")
+        print(f"  {'':<12} {'total':<26} {'':>11}  {money(s['service_spend']):>10}")
+    else:
+        print("  No services logged yet.")
+
+    print()
+    print("  COST OF OWNERSHIP")
+    print(line())
+    buckets = {"Fuel": s["fuel_spend"], "Service": s["service_spend"]}
+    for row in s["other"]:
+        key = (row.get("category") or "other").strip().title()
+        buckets[key] = buckets.get(key, 0) + (num(row.get("amount")) or 0)
+    for key, value in sorted(buckets.items(), key=lambda kv: -kv[1]):
+        if value:
+            share = value / s["total"] * 100 if s["total"] else 0
+            bar = "#" * int(round(share / 4))
+            print(f"  {key:<16} {money(value):>12}  {share:5.1f}%  {bar}")
+    print(f"  {'TOTAL':<16} {money(s['total']):>12}")
+    if s["span_km"] and s["total"]:
+        per_km = s["total"] / s["span_km"]
+        print(f"  {'Per km':<16} {CURRENCY + format(per_km, '.3f'):>12}"
+              f"  over {s['span_km']:,.0f} km recorded")
+
+    print()
+    print("  COMING UP")
+    print(line())
+    due = due_items(s["reminders"], s["latest_odo"], s["as_of"])
+    if due:
+        for row in due:
+            when = []
+            if row["days"] is not None:
+                when.append(f"{row['due_date']} ({row['days']:+d} days)")
+            if row["km"] is not None:
+                when.append(f"{row['due_km']} km ({row['km']:+,.0f} km)")
+            flag = "OVERDUE" if (row["days"] is not None and row["days"] < 0) or \
+                                (row["km"] is not None and row["km"] < 0) else "due"
+            print(f"  [{flag:^7}] {row['item'][:28]:<28} {' · '.join(when)}")
+    elif s["reminders"]:
+        print("  Nothing due in the next 60 days or 1,500 km.")
+    else:
+        print("  No reminders set.")
+    print()
+
+
+def cmd_due(args):
+    s = summarise()
+    due = due_items(s["reminders"], s["latest_odo"], s["as_of"],
+                    horizon_days=args.days, horizon_km=args.km)
+    if not due:
+        print(f"Nothing due within {args.days} days or {args.km:,} km.")
+        return
+    for row in due:
+        parts = [p for p in (row["due_date"], f"{row['due_km']} km" if row["due_km"] else "") if p]
+        print(f"{row['item']:<34} {' · '.join(parts)}")
+
+
+def cmd_log(args):
+    """Show the raw ledger for one module."""
+    path = {"fuel": FUEL, "service": SERVICE, "cost": COSTS, "reminders": REMINDERS}[args.module]
+    rows = read(path)
+    if not rows:
+        print(f"No {args.module} records yet.")
+        return
+    for row in rows[-args.limit:]:
+        print(" | ".join(f"{k}={v}" for k, v in row.items() if v))
+
+
+# ---------------------------------------------------------------- cli
+
+def build_parser():
+    p = argparse.ArgumentParser(prog="car.py", description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = p.add_subparsers(dest="command", required=True)
+
+    f = sub.add_parser("fuel", help="log a fill-up")
+    f.add_argument("--date", default=today())
+    f.add_argument("--odo", type=float, required=True, help="odometer in km")
+    f.add_argument("--litres", type=float, required=True)
+    f.add_argument("--cost", type=float, help="total paid")
+    f.add_argument("--price", type=float, help="price per litre (or cents/L)")
+    f.add_argument("--station")
+    f.add_argument("--fuel-type", dest="fuel_type", help="e.g. 91, 95, 98, diesel")
+    f.add_argument("--partial", action="store_true", help="not a full tank")
+    f.add_argument("--notes")
+    f.set_defaults(func=cmd_fuel)
+
+    s = sub.add_parser("service", help="log a service or repair")
+    s.add_argument("--date", default=today())
+    s.add_argument("--odo", type=float, required=True)
+    s.add_argument("--type", required=True, help="e.g. Minor service, Brake pads")
+    s.add_argument("--description")
+    s.add_argument("--workshop")
+    s.add_argument("--cost", type=float, default=0)
+    s.add_argument("--parts")
+    s.add_argument("--next-due-date", dest="next_due_date")
+    s.add_argument("--next-due-km", dest="next_due_km")
+    s.add_argument("--notes")
+    s.set_defaults(func=cmd_service)
+
+    c = sub.add_parser("cost", help="log any other cost")
+    c.add_argument("--date", default=today())
+    c.add_argument("--category", required=True,
+                   help="rego, insurance, tyres, repair, finance, tolls, parking, cleaning, accessories")
+    c.add_argument("--amount", type=float, required=True)
+    c.add_argument("--description")
+    c.add_argument("--odo", type=float)
+    c.add_argument("--notes")
+    c.set_defaults(func=cmd_cost)
+
+    r = sub.add_parser("remind", help="add a reminder")
+    r.add_argument("--item", required=True)
+    r.add_argument("--due-date", dest="due_date")
+    r.add_argument("--due-km", dest="due_km")
+    r.add_argument("--recurrence", help="e.g. yearly, 10000km, 6 months")
+    r.add_argument("--notes")
+    r.set_defaults(func=cmd_remind)
+
+    rep = sub.add_parser("report", help="full summary")
+    rep.set_defaults(func=cmd_report)
+
+    d = sub.add_parser("due", help="what is coming up")
+    d.add_argument("--days", type=int, default=60)
+    d.add_argument("--km", type=int, default=1500)
+    d.set_defaults(func=cmd_due)
+
+    l = sub.add_parser("log", help="print raw records")
+    l.add_argument("module", choices=["fuel", "service", "cost", "reminders"])
+    l.add_argument("--limit", type=int, default=20)
+    l.set_defaults(func=cmd_log)
+
+    return p
+
+
+if __name__ == "__main__":
+    args = build_parser().parse_args()
+    sys.exit(args.func(args))
