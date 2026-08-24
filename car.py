@@ -25,6 +25,7 @@ SERVICE = os.path.join(DATA, "service.csv")
 COSTS = os.path.join(DATA, "costs.csv")
 REMINDERS = os.path.join(DATA, "reminders.csv")
 ODOMETER = os.path.join(DATA, "odometer.csv")
+QUOTES = os.path.join(DATA, "insurance_quotes.csv")
 
 CURRENCY = "$"
 
@@ -36,6 +37,10 @@ FIELDS = {
     COSTS: ["date", "category", "description", "amount", "odometer_km", "notes"],
     REMINDERS: ["item", "due_date", "due_km", "recurrence", "notes"],
     ODOMETER: ["date", "odometer_km", "notes"],
+    QUOTES: ["brand", "underwriter", "date_quoted", "cover_type", "value_basis",
+             "sum_insured", "annual_premium", "monthly_premium", "basic_excess",
+             "extra_excess", "windscreen_excess", "choice_of_repairer", "hire_car",
+             "roadside", "rating_one_protection", "notes"],
 }
 
 # Cost categories that are also captured in their own ledger, so the
@@ -151,6 +156,21 @@ def cmd_cost(args):
     print(f"Logged cost: {args.category} {money(args.amount)} on {args.date}")
 
 
+def cmd_quote(args):
+    append(QUOTES, {
+        "brand": args.brand, "underwriter": args.underwriter or "",
+        "date_quoted": args.date, "cover_type": args.cover or "comprehensive",
+        "value_basis": args.value_basis or "", "sum_insured": args.sum_insured or "",
+        "annual_premium": args.annual or "", "monthly_premium": args.monthly or "",
+        "basic_excess": args.excess or "", "extra_excess": args.extra_excess or "",
+        "windscreen_excess": args.windscreen or "",
+        "choice_of_repairer": args.repairer or "", "hire_car": args.hire_car or "",
+        "roadside": args.roadside or "", "rating_one_protection": args.rating_one or "",
+        "notes": args.notes or "",
+    })
+    print(f"Quote recorded: {args.brand}")
+
+
 def cmd_odo(args):
     append(ODOMETER, {"date": args.date, "odometer_km": args.odo, "notes": args.notes or ""})
     sort_by_date(ODOMETER)
@@ -233,6 +253,105 @@ def due_items(reminders, latest_odo, as_of, horizon_days=60, horizon_km=1500):
 
 def line(char="-", width=62):
     return char * width
+
+
+def cmd_compare(args):
+    """Compare recorded quotes on cost, not just headline premium."""
+    rows = read(QUOTES)
+    if not rows:
+        print("No quotes recorded yet. Add them with:  ./car.py quote --brand ... --annual ...")
+        return
+
+    scored = []
+    for row in rows:
+        annual = num(row.get("annual_premium"))
+        monthly = num(row.get("monthly_premium"))
+        if not annual and monthly:
+            annual = monthly * 12
+        if not annual:
+            continue
+        basic = num(row.get("basic_excess")) or 0
+        extra = num(row.get("extra_excess")) or 0
+        insured = num(row.get("sum_insured"))
+        scored.append({
+            "brand": row.get("brand", ""),
+            "underwriter": row.get("underwriter", ""),
+            "basis": (row.get("value_basis") or "").lower(),
+            "insured": insured,
+            "annual": annual,
+            "monthly_total": monthly * 12 if monthly else None,
+            "excess": basic + extra,
+            "one_claim": annual + basic + extra,
+            "rate": (annual / insured * 100) if insured else None,
+            "row": row,
+        })
+    if not scored:
+        print("Quotes are recorded but none have a premium — add --annual or --monthly.")
+        return
+
+    scored.sort(key=lambda q: q["one_claim"])
+    cheapest_premium = min(q["annual"] for q in scored)
+
+    print()
+    print(line("=", 78))
+    print("  INSURANCE QUOTES — ranked by cost of a year with one at-fault claim")
+    print(line("=", 78))
+    print(f"  {'Brand':<20} {'Basis':<9} {'Insured':>10} {'Premium':>10} {'Excess':>9} {'1 claim':>10}")
+    print(line("-", 78))
+    for q in scored:
+        insured = f"{CURRENCY}{q['insured']:,.0f}" if q["insured"] else "—"
+        print(f"  {q['brand'][:20]:<20} {q['basis'][:9]:<9} {insured:>10} "
+              f"{money(q['annual']):>10} {money(q['excess']):>9} {money(q['one_claim']):>10}")
+    print(line("-", 78))
+
+    best = scored[0]
+    print(f"  Lowest cost if you claim once: {best['brand']} at {money(best['one_claim'])}")
+    by_premium = min(scored, key=lambda q: q["annual"])
+    if by_premium["brand"] != best["brand"]:
+        print(f"  Note: {by_premium['brand']} has the cheaper premium "
+              f"({money(by_premium['annual'])}) but a {money(by_premium['excess'])} excess, "
+              f"so one claim costs {money(by_premium['one_claim'] - best['one_claim'])} more.")
+    spread = max(q["annual"] for q in scored) - cheapest_premium
+    print(f"  Premium spread across {len(scored)} quotes: {money(spread)}")
+
+    # Paying monthly is a loan; show what it costs.
+    surcharges = [(q["brand"], q["monthly_total"] - q["annual"])
+                  for q in scored if q["monthly_total"] and q["monthly_total"] > q["annual"] + 1]
+    if surcharges:
+        print()
+        print("  Cost of paying monthly instead of annually:")
+        for brand, extra in sorted(surcharges, key=lambda s: -s[1]):
+            print(f"    {brand:<20} +{money(extra)} per year")
+
+    # Same underwriter means the same claims process behind different names.
+    groups = {}
+    for q in scored:
+        if q["underwriter"]:
+            groups.setdefault(q["underwriter"].strip().title(), []).append(q["brand"])
+    shared = {k: v for k, v in groups.items() if len(v) > 1}
+    if shared:
+        print()
+        print("  Same underwriter behind different brands:")
+        for uw, brands in shared.items():
+            print(f"    {uw}: {', '.join(brands)}")
+
+    print()
+    print("  Features")
+    print(line("-", 78))
+    width = max(10, min(13, (78 - 24) // max(1, len(scored))))
+    header = "".join(f"{q['brand'][:width-1]:<{width}}" for q in scored)
+    print(f"  {'':<22}{header}")
+    feats = [("choice_of_repairer", "Choice of repairer"), ("hire_car", "Hire car"),
+             ("roadside", "Roadside"), ("rating_one_protection", "Rating 1 protection"),
+             ("windscreen_excess", "Windscreen excess")]
+    for key, label in feats:
+        cells = "".join(f"{((q['row'].get(key) or chr(8212)).strip())[:width-1]:<{width}}"
+                        for q in scored)
+        print(f"  {label:<22}{cells}")
+    print()
+    print("  Excess figures are what you pay per claim. Confirm any age, inexperienced-")
+    print("  driver or unlisted-driver excess applies on top before you rely on these.")
+    print()
 
 
 def cmd_report(args):
@@ -340,7 +459,7 @@ def cmd_due(args):
 def cmd_log(args):
     """Show the raw ledger for one module."""
     path = {"fuel": FUEL, "service": SERVICE, "cost": COSTS,
-            "reminders": REMINDERS, "odo": ODOMETER}[args.module]
+            "reminders": REMINDERS, "odo": ODOMETER, "quotes": QUOTES}[args.module]
     rows = read(path)
     if not rows:
         print(f"No {args.module} records yet.")
@@ -399,6 +518,29 @@ def build_parser():
     r.add_argument("--notes")
     r.set_defaults(func=cmd_remind)
 
+    q = sub.add_parser("quote", help="record an insurance quote")
+    q.add_argument("--brand", required=True)
+    q.add_argument("--underwriter", help="who actually carries the risk")
+    q.add_argument("--date", default=today())
+    q.add_argument("--cover", help="comprehensive, third party property, etc.")
+    q.add_argument("--value-basis", dest="value_basis", help="agreed or market")
+    q.add_argument("--sum-insured", dest="sum_insured", type=float)
+    q.add_argument("--annual", type=float, help="annual premium")
+    q.add_argument("--monthly", type=float, help="monthly premium")
+    q.add_argument("--excess", type=float, help="basic excess")
+    q.add_argument("--extra-excess", dest="extra_excess", type=float,
+                   help="age/inexperienced/unlisted driver excess that would apply")
+    q.add_argument("--windscreen", help="windscreen excess or 'nil'")
+    q.add_argument("--repairer", help="choice of repairer: yes/no/optional")
+    q.add_argument("--hire-car", dest="hire_car")
+    q.add_argument("--roadside")
+    q.add_argument("--rating-one", dest="rating_one")
+    q.add_argument("--notes")
+    q.set_defaults(func=cmd_quote)
+
+    cmp_ = sub.add_parser("compare", help="compare recorded insurance quotes")
+    cmp_.set_defaults(func=cmd_compare)
+
     o = sub.add_parser("odo", help="record an odometer reading")
     o.add_argument("--date", default=today())
     o.add_argument("--odo", type=float, required=True)
@@ -414,7 +556,7 @@ def build_parser():
     d.set_defaults(func=cmd_due)
 
     l = sub.add_parser("log", help="print raw records")
-    l.add_argument("module", choices=["fuel", "service", "cost", "reminders", "odo"])
+    l.add_argument("module", choices=["fuel", "service", "cost", "reminders", "odo", "quotes"])
     l.add_argument("--limit", type=int, default=20)
     l.set_defaults(func=cmd_log)
 

@@ -17,6 +17,7 @@ back as a summary. Nothing to install.
 | Documents & details | `vehicle.md` | VIN, rego, engine, tyre sizes, fluid specs, policies |
 | Reminders | `data/reminders.csv` | Anything due by date or by odometer |
 | Odometer | `data/odometer.csv` | Standalone readings between fill-ups |
+| Insurance quotes | `data/insurance_quotes.csv` | Quotes to compare — see `docs/insurance.md` |
 
 ## Recording
 
@@ -49,6 +50,7 @@ back as a summary. Nothing to install.
 ./car.py report              # everything: economy, service history, cost split, what's due
 ./car.py due                 # due within 60 days or 1,500 km
 ./car.py due --days 180      # look further ahead
+./car.py compare             # rank insurance quotes by premium + excess
 ./car.py log fuel            # raw records for one module
 ```
 
