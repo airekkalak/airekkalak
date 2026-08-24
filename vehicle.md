@@ -11,9 +11,9 @@
 | Make | Honda |
 | Model | HR-V |
 | Variant / trim | VTi |
-| Model year | — |
+| Model year | 2019 |
 | Build date | — |
-| Body / doors | Wagon |
+| Body / doors | Wagon (5-door) |
 | Colour | Silver |
 | VIN | — |
 | Engine number | — |
@@ -98,5 +98,7 @@
 
 ## Notes
 
-Still to confirm: model year/build date, VIN, state of registration,
-engine and transmission, odometer, tyre size, and service history to date.
+Odometer 190,000 km as at 2026-08-24 (see `data/odometer.csv`).
+
+Still to confirm: build date, VIN, state of registration, engine and
+transmission, tyre size from the placard, and service history to date.

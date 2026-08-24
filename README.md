@@ -16,6 +16,7 @@ back as a summary. Nothing to install.
 | Costs & ownership | `data/costs.csv` | Rego, insurance, tyres, tolls, finance — anything else |
 | Documents & details | `vehicle.md` | VIN, rego, engine, tyre sizes, fluid specs, policies |
 | Reminders | `data/reminders.csv` | Anything due by date or by odometer |
+| Odometer | `data/odometer.csv` | Standalone readings between fill-ups |
 
 ## Recording
 
@@ -34,6 +35,9 @@ back as a summary. Nothing to install.
 ./car.py cost --category rego --amount 890 --description "12 months"
 ./car.py cost --category insurance --amount 1240
 ./car.py cost --category tyres --amount 960 --odo 84200 --description "4x Michelin"
+
+# Just an odometer reading, no spend attached.
+./car.py odo --odo 190000
 
 # A reminder, by date, by odometer, or both.
 ./car.py remind --item "Registration renewal" --due-date 2027-03-31 --recurrence yearly

@@ -24,6 +24,7 @@ FUEL = os.path.join(DATA, "fuel.csv")
 SERVICE = os.path.join(DATA, "service.csv")
 COSTS = os.path.join(DATA, "costs.csv")
 REMINDERS = os.path.join(DATA, "reminders.csv")
+ODOMETER = os.path.join(DATA, "odometer.csv")
 
 CURRENCY = "$"
 
@@ -34,6 +35,7 @@ FIELDS = {
               "parts", "next_due_date", "next_due_km", "notes"],
     COSTS: ["date", "category", "description", "amount", "odometer_km", "notes"],
     REMINDERS: ["item", "due_date", "due_km", "recurrence", "notes"],
+    ODOMETER: ["date", "odometer_km", "notes"],
 }
 
 # Cost categories that are also captured in their own ledger, so the
@@ -149,6 +151,12 @@ def cmd_cost(args):
     print(f"Logged cost: {args.category} {money(args.amount)} on {args.date}")
 
 
+def cmd_odo(args):
+    append(ODOMETER, {"date": args.date, "odometer_km": args.odo, "notes": args.notes or ""})
+    sort_by_date(ODOMETER)
+    print(f"Odometer reading: {args.odo:,.0f} km on {args.date}")
+
+
 def cmd_remind(args):
     append(REMINDERS, {
         "item": args.item, "due_date": args.due_date or "", "due_km": args.due_km or "",
@@ -179,7 +187,8 @@ def fuel_stats(rows):
 def summarise(as_of=None):
     fuel, service = read(FUEL), read(SERVICE)
     costs, reminders = read(COSTS), read(REMINDERS)
-    odos = [num(r.get("odometer_km")) for r in fuel + service + costs]
+    readings = read(ODOMETER)
+    odos = [num(r.get("odometer_km")) for r in fuel + service + costs + readings]
     odos = [o for o in odos if o]
     latest_odo = max(odos) if odos else None
     span_km = (max(odos) - min(odos)) if len(odos) > 1 else 0
@@ -196,6 +205,7 @@ def summarise(as_of=None):
 
     return {
         "fuel": fuel, "service": service, "costs": costs, "reminders": reminders,
+        "readings": readings,
         "latest_odo": latest_odo, "span_km": span_km,
         "fuel_spend": fuel_spend, "litres": litres,
         "service_spend": service_spend, "other": other, "other_spend": other_spend,
@@ -329,7 +339,8 @@ def cmd_due(args):
 
 def cmd_log(args):
     """Show the raw ledger for one module."""
-    path = {"fuel": FUEL, "service": SERVICE, "cost": COSTS, "reminders": REMINDERS}[args.module]
+    path = {"fuel": FUEL, "service": SERVICE, "cost": COSTS,
+            "reminders": REMINDERS, "odo": ODOMETER}[args.module]
     rows = read(path)
     if not rows:
         print(f"No {args.module} records yet.")
@@ -388,6 +399,12 @@ def build_parser():
     r.add_argument("--notes")
     r.set_defaults(func=cmd_remind)
 
+    o = sub.add_parser("odo", help="record an odometer reading")
+    o.add_argument("--date", default=today())
+    o.add_argument("--odo", type=float, required=True)
+    o.add_argument("--notes")
+    o.set_defaults(func=cmd_odo)
+
     rep = sub.add_parser("report", help="full summary")
     rep.set_defaults(func=cmd_report)
 
@@ -397,7 +414,7 @@ def build_parser():
     d.set_defaults(func=cmd_due)
 
     l = sub.add_parser("log", help="print raw records")
-    l.add_argument("module", choices=["fuel", "service", "cost", "reminders"])
+    l.add_argument("module", choices=["fuel", "service", "cost", "reminders", "odo"])
     l.add_argument("--limit", type=int, default=20)
     l.set_defaults(func=cmd_log)
 
