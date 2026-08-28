@@ -19,6 +19,7 @@ back as a summary. Nothing to install.
 | Odometer | `data/odometer.csv` | Standalone readings between fill-ups |
 | Insurance quotes | `data/insurance_quotes.csv` | Quotes to compare — see `docs/insurance.md` |
 | Fuel prices | `data/fuel_prices.csv` | Prices seen at the pump — see `docs/fuel.md` |
+| Tyres | `data/tyres.csv` | Pressure and tread checks, rotations |
 
 ## Recording
 
@@ -37,6 +38,10 @@ back as a summary. Nothing to install.
 ./car.py cost --category rego --amount 890 --description "12 months"
 ./car.py cost --category insurance --amount 1240
 ./car.py cost --category tyres --amount 960 --odo 84200 --description "4x Michelin"
+
+# A tyre check. --target is the placard pressure; out-of-spec corners are flagged.
+./car.py tyres --odo 190000 --target 33 --fl 32 --fr 33 --rl 33 --rr 31 \
+    --tread-fl 4.5 --spare 58
 
 # Just an odometer reading, no spend attached.
 ./car.py odo --odo 190000

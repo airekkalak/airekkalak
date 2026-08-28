@@ -27,6 +27,7 @@ REMINDERS = os.path.join(DATA, "reminders.csv")
 ODOMETER = os.path.join(DATA, "odometer.csv")
 QUOTES = os.path.join(DATA, "insurance_quotes.csv")
 PRICES = os.path.join(DATA, "fuel_prices.csv")
+TYRES = os.path.join(DATA, "tyres.csv")
 
 CURRENCY = "$"
 
@@ -44,6 +45,9 @@ FIELDS = {
              "roadside", "rating_one_protection", "notes"],
     PRICES: ["date", "station", "suburb", "brand", "fuel_type", "price_cents",
              "source", "notes"],
+    TYRES: ["date", "odometer_km", "pressure_fl", "pressure_fr", "pressure_rl",
+            "pressure_rr", "pressure_spare", "tread_fl", "tread_fr", "tread_rl",
+            "tread_rr", "rotated", "notes"],
 }
 
 # Cost categories that are also captured in their own ledger, so the
@@ -165,6 +169,50 @@ def to_cents(value):
     if v is None:
         return None
     return round(v * 100, 1) if v < 20 else round(v, 1)
+
+
+LEGAL_TREAD_MM = 1.5
+CORNERS = [("fl", "Front left"), ("fr", "Front right"),
+           ("rl", "Rear left"), ("rr", "Rear right")]
+
+
+def cmd_tyres(args):
+    """Log a pressure/tread check and flag anything out of spec."""
+    row = {"date": args.date, "odometer_km": args.odo or "",
+           "pressure_spare": args.spare or "", "rotated": "yes" if args.rotated else "",
+           "notes": args.notes or ""}
+    for key, _ in CORNERS:
+        row[f"pressure_{key}"] = getattr(args, key) or ""
+        row[f"tread_{key}"] = getattr(args, f"tread_{key}") or ""
+    append(TYRES, row)
+    sort_by_date(TYRES)
+    print(f"Tyre check logged for {args.date}")
+
+    target = args.target
+    if target:
+        for key, label in CORNERS:
+            psi = num(getattr(args, key))
+            if psi is None:
+                continue
+            delta = psi - target
+            if abs(delta) >= 3:
+                verb = "under" if delta < 0 else "over"
+                print(f"  {label}: {psi:.0f} psi is {abs(delta):.0f} psi {verb} "
+                      f"the {target:.0f} psi target")
+    else:
+        print("  No --target given, so pressures were not checked against spec.")
+        print("  Read the placard in the driver's door jamb and pass it as --target.")
+
+    for key, label in CORNERS:
+        tread = num(getattr(args, f"tread_{key}"))
+        if tread is None:
+            continue
+        if tread <= LEGAL_TREAD_MM:
+            print(f"  {label}: {tread:.1f} mm tread is at or under the "
+                  f"{LEGAL_TREAD_MM} mm legal minimum — replace before driving far")
+        elif tread < 3.0:
+            print(f"  {label}: {tread:.1f} mm tread — wet grip falls off below 3 mm, "
+                  f"start budgeting")
 
 
 def cmd_price(args):
@@ -605,7 +653,7 @@ def cmd_due(args):
 def cmd_log(args):
     """Show the raw ledger for one module."""
     path = {"fuel": FUEL, "service": SERVICE, "cost": COSTS,
-            "reminders": REMINDERS, "odo": ODOMETER, "quotes": QUOTES, "prices": PRICES}[args.module]
+            "reminders": REMINDERS, "odo": ODOMETER, "quotes": QUOTES, "prices": PRICES, "tyres": TYRES}[args.module]
     rows = read(path)
     if not rows:
         print(f"No {args.module} records yet.")
@@ -664,6 +712,19 @@ def build_parser():
     r.add_argument("--notes")
     r.set_defaults(func=cmd_remind)
 
+    t = sub.add_parser("tyres", help="log a pressure and tread check")
+    t.add_argument("--date", default=today())
+    t.add_argument("--odo", type=float)
+    t.add_argument("--target", type=float, help="placard pressure in psi")
+    for key, label in CORNERS:
+        t.add_argument(f"--{key}", type=float, help=f"{label.lower()} pressure, psi")
+        t.add_argument(f"--tread-{key}", dest=f"tread_{key}", type=float,
+                       help=f"{label.lower()} tread depth, mm")
+    t.add_argument("--spare", type=float, help="spare pressure, psi")
+    t.add_argument("--rotated", action="store_true", help="tyres were rotated")
+    t.add_argument("--notes")
+    t.set_defaults(func=cmd_tyres)
+
     pr = sub.add_parser("price", help="record a fuel price you saw")
     pr.add_argument("--station", required=True)
     pr.add_argument("--price", type=float, required=True, help="cents/L or $/L")
@@ -719,7 +780,7 @@ def build_parser():
     d.set_defaults(func=cmd_due)
 
     l = sub.add_parser("log", help="print raw records")
-    l.add_argument("module", choices=["fuel", "service", "cost", "reminders", "odo", "quotes", "prices"])
+    l.add_argument("module", choices=["fuel", "service", "cost", "reminders", "odo", "quotes", "prices", "tyres"])
     l.add_argument("--limit", type=int, default=20)
     l.set_defaults(func=cmd_log)
 
