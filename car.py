@@ -15,6 +15,7 @@ import argparse
 import csv
 import datetime as dt
 import os
+import re
 import sys
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -172,8 +173,23 @@ def to_cents(value):
 
 
 LEGAL_TREAD_MM = 1.5
+PROFILE = os.path.join(ROOT, "vehicle.md")
 CORNERS = [("fl", "Front left"), ("fr", "Front right"),
            ("rl", "Rear left"), ("rr", "Rear right")]
+
+
+def placard_pressure():
+    """The cold pressure recorded on the profile's tyre row, in psi."""
+    if not os.path.exists(PROFILE):
+        return None
+    for raw in open(PROFILE):
+        if "Pressure (front / rear" not in raw:
+            continue
+        value = raw.split("|")[2] if raw.count("|") >= 3 else ""
+        match = re.search(r"(\d+(?:\.\d+)?)\s*psi", value)
+        if match:
+            return float(match.group(1))
+    return None
 
 
 def cmd_tyres(args):
@@ -188,8 +204,10 @@ def cmd_tyres(args):
     sort_by_date(TYRES)
     print(f"Tyre check logged for {args.date}")
 
-    target = args.target
+    target = args.target or placard_pressure()
     if target:
+        if not args.target:
+            print(f"  Checked against the {target:.0f} psi placard figure in vehicle.md")
         for key, label in CORNERS:
             psi = num(getattr(args, key))
             if psi is None:
@@ -200,8 +218,8 @@ def cmd_tyres(args):
                 print(f"  {label}: {psi:.0f} psi is {abs(delta):.0f} psi {verb} "
                       f"the {target:.0f} psi target")
     else:
-        print("  No --target given, so pressures were not checked against spec.")
-        print("  Read the placard in the driver's door jamb and pass it as --target.")
+        print("  No target pressure available, so pressures were not checked.")
+        print("  Record the placard figure in vehicle.md, or pass --target.")
 
     for key, label in CORNERS:
         tread = num(getattr(args, f"tread_{key}"))
@@ -715,7 +733,8 @@ def build_parser():
     t = sub.add_parser("tyres", help="log a pressure and tread check")
     t.add_argument("--date", default=today())
     t.add_argument("--odo", type=float)
-    t.add_argument("--target", type=float, help="placard pressure in psi")
+    t.add_argument("--target", type=float,
+                   help="placard pressure in psi (defaults to vehicle.md)")
     for key, label in CORNERS:
         t.add_argument(f"--{key}", type=float, help=f"{label.lower()} pressure, psi")
         t.add_argument(f"--tread-{key}", dest=f"tread_{key}", type=float,

@@ -39,7 +39,7 @@
 | Tyre size (front) | — |
 | Tyre size (rear) | — |
 | Wheel size / offset | — |
-| Pressure (front / rear, cold) | — read the door-jamb placard |
+| Pressure (front / rear, cold) | 33 psi / 33 psi (227 kPa) |
 | Current tyres (brand, model) | — |
 | Fitted at (odometer / date) | — |
 | Spare type | — |
@@ -115,10 +115,9 @@ describes it as a 2019 HR-V. A build-date versus model-year difference is
 common and usually harmless, but confirm against the compliance plate before
 ordering year-specific parts.
 
-Tyre pressures must come from the placard in the driver's door jamb (or the
-fuel filler flap) — not from the tyre sidewall, which shows the tyre's
-maximum rather than the recommended pressure. Record checks with
-`./car.py tyres --target <placard psi> ...`.
+Placard pressure is 33 psi cold, front and rear. `./car.py tyres` reads that
+figure from this table as its default target, so update it here if the
+placard says otherwise or a different tyre size is fitted.
 
 Still to confirm: build date, engine and transmission, tyre size and
 pressures from the placard, and service history to date.

@@ -39,8 +39,9 @@ back as a summary. Nothing to install.
 ./car.py cost --category insurance --amount 1240
 ./car.py cost --category tyres --amount 960 --odo 84200 --description "4x Michelin"
 
-# A tyre check. --target is the placard pressure; out-of-spec corners are flagged.
-./car.py tyres --odo 190000 --target 33 --fl 32 --fr 33 --rl 33 --rr 31 \
+# A tyre check. The placard pressure comes from vehicle.md; out-of-spec
+# corners are flagged. Pass --target to check against a different figure.
+./car.py tyres --odo 190000 --fl 32 --fr 33 --rl 33 --rr 31 \
     --tread-fl 4.5 --spare 58
 
 # Just an odometer reading, no spend attached.
