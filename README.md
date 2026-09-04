@@ -21,6 +21,11 @@ back as a summary. Nothing to install.
 | Fuel prices | `data/fuel_prices.csv` | Prices seen at the pump — see `docs/fuel.md` |
 | Tyres | `data/tyres.csv` | Pressure and tread checks, rotations |
 
+## Looking after it
+
+`docs/routine.md` — the daily, weekly and monthly checks, and what matters
+specifically on a high-kilometre car.
+
 ## Recording
 
 ```bash
