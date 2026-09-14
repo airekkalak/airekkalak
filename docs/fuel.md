@@ -7,6 +7,13 @@ Australian capital cities ran a **weekly** price cycle. Brisbane hasn't for
 years. Cycles here have stretched out to roughly a month: a sharp spike of
 20–40c over a day or two, then a slow grind back down over several weeks.
 
+**Caveat as at September 2026:** the regular Brisbane cycle appears to have
+been disrupted for much of this year, with reports that cycles largely stopped
+running from around February. Check a live cycle graph (PetrolSpy publishes one
+for Brisbane) before assuming there is a trough to wait for. When cycles are
+not running, "wait for the dip" simply means buying later at whatever the
+market has done since — the station you choose matters, the day does not.
+
 That means where you are **in the cycle** is worth far more than which day of
 the week it is. Filling on the "right" weekday at the top of a cycle costs you
 much more than filling on the "wrong" weekday at the bottom.
@@ -39,6 +46,17 @@ looks cheap may simply have been priced on cheaper days.
 The tool folds your actual fill-ups into the same analysis, so every
 `./car.py fuel` entry counts as a data point too.
 
+## The only honest leading indicator
+
+Nobody can forecast retail petrol a week ahead. The closest legitimate signal
+is the **Terminal Gate Price** — the daily wholesale price published by the oil
+companies and the Australian Institute of Petroleum. Retail follows it with
+roughly a one-to-two week lag, so a TGP climbing this week usually means retail
+climbing next week. It tells you which way things are heading, not what any
+particular station will charge.
+
+Treat anything more specific than that as guesswork.
+
 ## Live prices without leaving the house
 
 Queensland runs a mandatory price reporting scheme: stations must report price
@@ -55,9 +73,12 @@ loyalty discount.
 
 ## Discounts, in order of what they're actually worth
 
-1. **Buying at the bottom of the cycle** — 20c+/L.
-2. **Choosing the right station** — independents and warehouse sites often run
-   several cents under the majors. Your own log will show which.
+0. **Choosing the right station.** Where prices across a city span 40c or more
+   between the cheapest and dearest sites, this is the biggest lever available
+   and it works every single fill, regardless of what the market is doing.
+1. **Buying at the bottom of the cycle** — 20c+/L, *when a cycle is running*.
+2. **Timing within the week** — a few cents, and only worth acting on if it
+   costs you nothing to shift the day.
 3. **Supermarket dockets, 4c/L** — real, but small, and only if the docket
    station isn't already dearer than the independent down the road.
 4. **Loyalty apps** — a cent or two, sometimes points.
