@@ -46,6 +46,31 @@ looks cheap may simply have been priced on cheaper days.
 The tool folds your actual fill-ups into the same analysis, so every
 `./car.py fuel` entry counts as a data point too.
 
+## Context: the 2026 oil shock
+
+Noted 14 September 2026, from news reporting rather than pages read directly —
+verify before relying on the figures.
+
+Brent crude has been trading around US$97–105 a barrel on US–Iran fighting in
+and around the Strait of Hormuz, up roughly 19% in a month. National average
+unleaded is about $2.11/L against roughly $1.55 in July.
+
+That 56c rise is two separate things, and they behave differently:
+
+- **~16c** is the fuel excise relief ending on 2 August. This does not come
+  back if the conflict resolves — only a new policy decision returns it.
+- **~40c** is crude and refining margin, which does fall if supply fears ease.
+
+Forecasts at the time had Brent easing toward US$85 by December 2026, with a
+warning of US$120+ in 2027 if Gulf output stays well below pre-war levels. In
+other words: wide uncertainty in both directions, so don't plan around either.
+
+**What follows from this.** At roughly 27,000 km a year and 8 L/100km — about
+2,150 litres — every 10c/L is about $215 a year. The spread between the
+cheapest and dearest stations in Brisbane is wider than that, which means
+station choice is worth more than anything happening in the Persian Gulf.
+Control what is controllable.
+
 ## The only honest leading indicator
 
 Nobody can forecast retail petrol a week ahead. The closest legitimate signal
